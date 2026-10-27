@@ -368,9 +368,15 @@ export function Studio() {
           </div>
           {separator && !separator.ok && (
             <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
-              For clean vocals and a clean instrumental, start the AI separator in a terminal with{" "}
-              <code className="rounded bg-bg px-1 py-0.5 font-mono text-fg">npm run separator</code>. Until then
-              the preview engine approximates the stems.
+              {separator.installed === false ? (
+                "AI separation isn't available on this site yet, so the preview engine approximates the stems."
+              ) : (
+                <>
+                  For clean vocals and a clean instrumental, start the AI separator in a terminal with{" "}
+                  <code className="rounded bg-bg px-1 py-0.5 font-mono text-fg">npm run separator</code>. Until
+                  then the preview engine approximates the stems.
+                </>
+              )}
             </p>
           )}
 

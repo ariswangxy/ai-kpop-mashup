@@ -1,4 +1,4 @@
-"""Local AI audio service for Mashup Studio.
+"""AI audio service for Mashup Studio.
 
 Runs Demucs (https://github.com/facebookresearch/demucs, MIT) for stem separation and madmom
 (https://github.com/CPJKU/madmom, BSD) for beat and downbeat tracking, behind a tiny HTTP API:
@@ -9,7 +9,13 @@ Runs Demucs (https://github.com/facebookresearch/demucs, MIT) for stem separatio
     POST /beats                        body: WAV  -> {"beats": [s], "downbeats": [s]}
 
 Models load once at startup. Requests are handled one at a time.
+
+`app` is a WSGI app: Vercel's Python runtime loads it directly, and `python server.py` serves it
+locally. Vercel installs only requirements.txt (no models), so there /health reports
+{"ok": false, "installed": false} and the app uses its in-browser preview engine instead.
 """
+
+from __future__ import annotations
 
 import io
 import json
@@ -18,14 +24,24 @@ import sys
 import threading
 import time
 import wave
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from socketserver import ThreadingMixIn
+from urllib.parse import parse_qs
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
-import numpy as np
-import soxr
-import torch
-from demucs.apply import apply_model
-from demucs.pretrained import get_model
+# Vercel's filesystem is read-only outside /tmp, so the model download has to land there.
+if os.environ.get("VERCEL"):
+    os.environ.setdefault("TORCH_HOME", "/tmp/torch")
+
+try:
+    import numpy as np
+    import soxr
+    import torch
+    from demucs.apply import apply_model
+    from demucs.pretrained import get_model
+
+    INSTALLED = True
+except ImportError:  # deployed without requirements-ai.txt
+    INSTALLED = False
 
 HOST = os.environ.get("SEPARATOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SEPARATOR_PORT", "8765"))
@@ -53,19 +69,22 @@ def vocals_model(model):
     return model
 
 
-DEVICE = pick_device()
-print(f"Loading {MODEL_NAME} on {DEVICE}…", flush=True)
-MODEL = vocals_model(get_model(MODEL_NAME))
-MODEL.eval()
-VOCALS = MODEL.sources.index("vocals")
-LOCK = threading.Lock()
+if INSTALLED:
+    DEVICE = pick_device()
+    print(f"Loading {MODEL_NAME} on {DEVICE}…", flush=True)
+    MODEL = vocals_model(get_model(MODEL_NAME))
+    MODEL.eval()
+    VOCALS = MODEL.sources.index("vocals")
+    LOCK = threading.Lock()
 
-print("Loading madmom beat tracker…", flush=True)
-from madmom.features.downbeats import DBNDownBeatTrackingProcessor, RNNDownBeatProcessor  # noqa: E402
+    print("Loading madmom beat tracker…", flush=True)
+    from madmom.features.downbeats import DBNDownBeatTrackingProcessor, RNNDownBeatProcessor  # noqa: E402
 
-BEAT_RNN = RNNDownBeatProcessor()
-BEAT_DBN = DBNDownBeatTrackingProcessor(beats_per_bar=[4], fps=100)
-print(f"Ready on http://{HOST}:{PORT}", flush=True)
+    BEAT_RNN = RNNDownBeatProcessor()
+    BEAT_DBN = DBNDownBeatTrackingProcessor(beats_per_bar=[4], fps=100)
+    print(f"Ready on http://{HOST}:{PORT}", flush=True)
+else:
+    print("AI packages not installed; serving /health only. Install separator/requirements-ai.txt.", flush=True)
 
 
 def read_wav(data: bytes) -> tuple[np.ndarray, int]:
@@ -129,65 +148,67 @@ def find_beats(audio: np.ndarray, rate: int) -> dict:
     return {"beats": result[:, 0].tolist(), "downbeats": result[result[:, 1] == 1, 0].tolist()}
 
 
-class Handler(BaseHTTPRequestHandler):
-    def _send(self, status: int, body: bytes, content_type: str):
-        try:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # the app cancelled and hung up; nothing to deliver
+STATUS_TEXT = {
+    200: "OK",
+    400: "Bad Request",
+    404: "Not Found",
+    413: "Payload Too Large",
+    500: "Internal Server Error",
+    503: "Service Unavailable",
+}
 
-    def _json(self, status: int, payload: dict):
-        self._send(status, json.dumps(payload).encode(), "application/json")
 
-    def do_GET(self):
-        if urlparse(self.path).path == "/health":
-            self._json(200, {"ok": True, "model": MODEL_NAME, "device": DEVICE})
-        else:
-            self._json(404, {"error": "Not found"})
+def json_response(status: int, payload: dict) -> tuple[int, bytes, str]:
+    return status, json.dumps(payload).encode(), "application/json"
 
-    def do_POST(self):
-        url = urlparse(self.path)
-        if url.path == "/beats":
-            return self._beats()
-        if url.path != "/separate":
-            return self._json(404, {"error": "Not found"})
-        keep = parse_qs(url.query).get("keep", ["vocals"])[0]
-        if keep not in ("vocals", "instrumental"):
-            return self._json(400, {"error": "keep must be 'vocals' or 'instrumental'"})
-        length = int(self.headers.get("Content-Length", 0))
-        if not 0 < length <= MAX_BODY_BYTES:
-            return self._json(413, {"error": "Send a WAV body up to 64 MB."})
-        try:
-            audio, rate = read_wav(self.rfile.read(length))
-            started = time.time()
-            stem, out_rate = separate(audio, rate, keep)
-            print(f"{keep}: {audio.shape[1] / rate:.1f}s of audio in {time.time() - started:.1f}s", flush=True)
-            self._send(200, write_wav(stem, out_rate), "audio/wav")
-        except Exception as e:  # report the failure to the app instead of dropping the connection
-            print(f"separation failed: {e}", file=sys.stderr, flush=True)
-            self._json(500, {"error": str(e)})
 
-    def _beats(self):
-        length = int(self.headers.get("Content-Length", 0))
-        if not 0 < length <= MAX_BODY_BYTES:
-            return self._json(413, {"error": "Send a WAV body up to 64 MB."})
-        try:
-            audio, rate = read_wav(self.rfile.read(length))
-            started = time.time()
+def handle(environ) -> tuple[int, bytes, str]:
+    method, path = environ["REQUEST_METHOD"], environ.get("PATH_INFO", "")
+    if method == "GET" and path == "/health":
+        if not INSTALLED:
+            return json_response(200, {"ok": False, "installed": False})
+        return json_response(200, {"ok": True, "model": MODEL_NAME, "device": DEVICE})
+    if method != "POST" or path not in ("/separate", "/beats"):
+        return json_response(404, {"error": "Not found"})
+    if not INSTALLED:
+        return json_response(503, {"error": "AI separation isn't available on this deployment."})
+    keep = parse_qs(environ.get("QUERY_STRING", "")).get("keep", ["vocals"])[0]
+    if path == "/separate" and keep not in ("vocals", "instrumental"):
+        return json_response(400, {"error": "keep must be 'vocals' or 'instrumental'"})
+    length = int(environ.get("CONTENT_LENGTH") or 0)
+    if not 0 < length <= MAX_BODY_BYTES:
+        return json_response(413, {"error": "Send a WAV body up to 64 MB."})
+    try:
+        audio, rate = read_wav(environ["wsgi.input"].read(length))
+        started = time.time()
+        if path == "/beats":
             result = find_beats(audio, rate)
             print(f"beats: {audio.shape[1] / rate:.1f}s of audio in {time.time() - started:.1f}s", flush=True)
-            self._json(200, result)
-        except Exception as e:
-            print(f"beat tracking failed: {e}", file=sys.stderr, flush=True)
-            self._json(500, {"error": str(e)})
+            return json_response(200, result)
+        stem, out_rate = separate(audio, rate, keep)
+        print(f"{keep}: {audio.shape[1] / rate:.1f}s of audio in {time.time() - started:.1f}s", flush=True)
+        return 200, write_wav(stem, out_rate), "audio/wav"
+    except Exception as e:  # report the failure to the app instead of dropping the connection
+        task = "beat tracking" if path == "/beats" else "separation"
+        print(f"{task} failed: {e}", file=sys.stderr, flush=True)
+        return json_response(500, {"error": str(e)})
 
+
+def app(environ, start_response):
+    status, body, content_type = handle(environ)
+    start_response(f"{status} {STATUS_TEXT[status]}", [("Content-Type", content_type), ("Content-Length", str(len(body)))])
+    return [body]
+
+
+class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True  # so /health answers while a separation is running
+
+
+class QuietHandler(WSGIRequestHandler):
     def log_message(self, *args):
         pass
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    # wsgiref already ignores clients that hang up mid-response (the app cancelled).
+    make_server(HOST, PORT, app, server_class=ThreadingWSGIServer, handler_class=QuietHandler).serve_forever()

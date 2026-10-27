@@ -1,8 +1,3 @@
-torch==2.5.1
-torchaudio==2.5.1
-demucs==4.0.1
-numpy==1.26.4
-soxr==1.1.0
-# madmom's last PyPI release doesn't support Python 3.10+; install from source (needs Cython first).
-Cython==3.3.0
-madmom @ git+https://github.com/CPJKU/madmom.git@27f032e8947204902c675e5e341a3faf5dc86dae
+# What Vercel installs for the `separator` service: nothing beyond the standard library, so the
+# deployment builds and /health reports the AI models as not installed.
+# For the real separator (PyTorch, Demucs, madmom) see requirements-ai.txt and `npm run separator:setup`.

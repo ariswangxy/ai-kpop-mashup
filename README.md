@@ -25,6 +25,7 @@ npm run separator         # keep running next to `npm run dev`; first start down
 - Apple GPUs (MPS) can't run Demucs (a convolution exceeds an MPS limit in PyTorch 2.5–2.8), so Macs use the CPU. `SEPARATOR_DEVICE=cuda` works on NVIDIA machines.
 - The Next.js route `app/api/separate/route.ts` proxies to it (`SEPARATOR_URL`, default `http://127.0.0.1:8765`).
 - If the separator isn't running, the studio says so and falls back to the in-browser preview engine below.
+- The AI packages live in `separator/requirements-ai.txt`. `separator/requirements.txt` is what Vercel installs and is deliberately empty (see Deploying).
 - **Full-song mashups** send both whole songs in 60 s chunks (crossfaded over 4 s overlaps) with live progress and a Cancel button. Expect about a minute of processing per minute of music on an M2.
 
 ## How processing works
@@ -50,3 +51,12 @@ Without Supabase env vars, saved mashups are kept in IndexedDB in the browser. T
 2. Apply the files in `supabase/migrations/` in order (`supabase db push`, or paste it into the SQL editor). It creates the `mashups` table and the private `tracks` and `mashups` storage buckets.
 
 Ownership uses an anonymous per-browser id sent as an `x-owner-id` header. That is fine for development, but anyone can send any header, so add Supabase Auth and switch the policies to `auth.uid()` before making this public.
+
+## Deploying (Vercel)
+
+`vercel.json` deploys two [Vercel services](https://vercel.com/docs/services) as one project:
+
+- `app`, the Next.js site, is public on every path.
+- `separator` (`separator/server.py`) is internal. Only `app` reaches it, through a binding that injects `SEPARATOR_URL`; don't set that variable yourself.
+
+For now the deployed separator has no AI models. `separator/requirements.txt` is empty, so `/health` reports `installed: false` and the site uses the preview engine. The full separator doesn't fit Vercel Functions yet: requests and responses are capped at 4.5 MB (a 64 s chunk is about 11 MB), and PyTorch + madmom need a CPU-only, Python 3.12 build. Run `vercel dev` to try both services together locally.

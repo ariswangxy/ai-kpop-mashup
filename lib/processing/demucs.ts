@@ -94,6 +94,8 @@ export async function findBeatsWithAi(buffer: AudioBuffer, signal?: AbortSignal)
 
 export interface SeparatorStatus {
   ok: boolean;
+  /** False when the service is deployed without its AI models (the Vercel deployment, for now). */
+  installed?: boolean;
   model?: string;
   device?: string;
 }

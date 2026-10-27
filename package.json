@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "separator": "separator/.venv/bin/python separator/server.py",
-    "separator:setup": "python3.11 -m venv separator/.venv && separator/.venv/bin/pip install Cython==3.3.0 numpy==1.26.4 && separator/.venv/bin/pip install --no-build-isolation -r separator/requirements.txt"
+    "separator:setup": "python3.11 -m venv separator/.venv && separator/.venv/bin/pip install Cython==3.3.0 numpy==1.26.4 && separator/.venv/bin/pip install --no-build-isolation -r separator/requirements-ai.txt"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
