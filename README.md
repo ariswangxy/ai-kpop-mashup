@@ -24,9 +24,19 @@ npm run separator         # keep running next to `npm run dev`; first start down
 - Only the vocals specialist of `htdemucs_ft` runs; the instrumental is the mix minus the vocals. About 15 s per stem on an M2 CPU.
 - Apple GPUs (MPS) can't run Demucs (a convolution exceeds an MPS limit in PyTorch 2.5–2.8), so Macs use the CPU. `SEPARATOR_DEVICE=cuda` works on NVIDIA machines.
 - The Next.js route `app/api/separate/route.ts` proxies to it (`SEPARATOR_URL`, default `http://127.0.0.1:8765`).
-- If the separator isn't running, the studio says so and falls back to the in-browser preview engine below.
+- If the separator isn't running, the studio uses Demucs in the browser (below), or the preview engine when the browser can't run it.
 - The AI packages live in `separator/requirements-ai.txt`. `separator/requirements.txt` is what Vercel installs and is deliberately empty (see Deploying).
 - **Full-song mashups** send both whole songs in 60 s chunks (crossfaded over 4 s overlaps) with live progress and a Cancel button. Expect about a minute of processing per minute of music on an M2.
+
+### In the browser (no server)
+
+Without the local separator, browsers with WebGPU run Demucs themselves (`lib/processing/browser.ts`): the `htdemucs` ONNX export from [demucs-web](https://github.com/timcsy/demucs-web) (MIT), executed by ONNX Runtime Web in a Web Worker (`browser-worker.ts`). This is what the deployed site uses.
+
+- The 181 MB model downloads from Hugging Face on the first mashup, then stays in Cache Storage (Hugging Face marks it no-store, so the HTTP cache wouldn't keep it).
+- It's the base `htdemucs`, not the fine-tuned vocals specialist, but its vocals closely match the local separator's (21.6 dB SDR, correlation 0.997, on a test chorus).
+- On an M-series Mac a 30 s mashup takes about 16 s (about 33 s the first time, including the download); whole songs separate at about a third of real time.
+- Songs are cut into the model's 7.8 s segments with quarter overlaps (`htdemucs.ts`); only the vocals are rebuilt, and the instrumental is the mix minus the vocals.
+- Without WebGPU the studio uses the preview engine: ONNX Runtime's WebAssembly fallback works, but runs several times slower.
 
 ## How processing works
 
@@ -59,4 +69,4 @@ Ownership uses an anonymous per-browser id sent as an `x-owner-id` header. That 
 - `app`, the Next.js site, is public on every path.
 - `separator` (`separator/server.py`) is internal. Only `app` reaches it, through a binding that injects `SEPARATOR_URL`; don't set that variable yourself.
 
-For now the deployed separator has no AI models. `separator/requirements.txt` is empty, so `/health` reports `installed: false` and the site uses the preview engine. The full separator doesn't fit Vercel Functions yet: requests and responses are capped at 4.5 MB (a 64 s chunk is about 11 MB), and PyTorch + madmom need a CPU-only, Python 3.12 build. Run `vercel dev` to try both services together locally.
+The deployed separator has no AI models: `separator/requirements.txt` is empty, so `/health` reports `installed: false`, and visitors get Demucs in their browser instead (see above). The Python separator doesn't fit Vercel Functions yet: requests and responses are capped at 4.5 MB (a 64 s chunk is about 11 MB), and PyTorch + madmom need a CPU-only, Python 3.12 build. Run `vercel dev` to try both services together locally.

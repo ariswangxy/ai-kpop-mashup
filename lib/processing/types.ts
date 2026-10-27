@@ -72,6 +72,7 @@ export interface MashupResult {
 }
 
 export const STAGES = [
+  { id: "model", label: "Downloading the AI model (one time only)" },
   { id: "prepare", label: "Lining up your 30-second cuts" },
   { id: "vocals", label: "Isolating vocals from Song A" },
   { id: "instrumental", label: "Isolating the instrumental from Song B" },

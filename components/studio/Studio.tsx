@@ -11,10 +11,13 @@ import { detectBpm, type TempoMatch } from "@/lib/audio/tempo";
 import {
   activeKeyShift,
   activeTempoMatch,
+  browserAiSupported,
   checkSeparator,
   findBeatsWithAi,
   getProcessor,
   MASHUP_DURATION_SEC,
+  MODEL_MB,
+  modelCached,
   vocalWindowSec,
   type MixSettings,
   type SeparatorStatus,
@@ -47,7 +50,11 @@ const PEAK_BUCKETS = 600;
 
 export function Studio() {
   const [separator, setSeparator] = useState<SeparatorStatus | null>(null);
-  const processor = getProcessor(separator?.ok ?? false);
+  // Whether this browser can run Demucs itself (WebGPU), and whether its model is downloaded yet.
+  const [browserAi, setBrowserAi] = useState<boolean | null>(null);
+  const [modelReady, setModelReady] = useState(false);
+  const [modelDownload, setModelDownload] = useState(false);
+  const processor = getProcessor(separator?.ok ?? false, browserAi ?? false);
   const [tracks, setTracks] = useState<PerSide<LoadedTrack | null>>({ a: null, b: null });
   const [loading, setLoading] = useState<PerSide<boolean>>({ a: false, b: false });
   // Files whose beats the AI tracker is still working on; Generate waits for them.
@@ -98,6 +105,8 @@ export function Studio() {
 
   useEffect(() => {
     void checkSeparator().then(setSeparator);
+    void browserAiSupported().then(setBrowserAi);
+    void modelCached().then(setModelReady);
   }, []);
 
   useEffect(() => () => {
@@ -203,11 +212,14 @@ export function Studio() {
       // The separator may have been started or stopped since the page loaded.
       const status = await checkSeparator();
       setSeparator(status);
-      const out = await getProcessor(status.ok).process(
+      const inBrowser = !status.ok && Boolean(browserAi);
+      setModelDownload(inBrowser && !(await modelCached()));
+      const out = await getProcessor(status.ok, inBrowser).process(
         { vocals: view.a, instrumental: view.b, settings },
         (stage, fraction) => setProgress({ stage, fraction }),
         controller.signal,
       );
+      if (inBrowser) setModelReady(true);
       controller.signal.throwIfAborted(); // cancelled during a step that can't be interrupted
       setResult({
         url: URL.createObjectURL(out.blob),
@@ -343,11 +355,17 @@ export function Studio() {
             <p className="text-center text-xs text-muted">Add both songs to start.</p>
           ) : (
             full &&
-            separator?.ok && (
+            (separator?.ok ? (
               <p className="text-center text-xs text-muted">
                 Separating full songs takes about {estimateMinutes(view.a!, view.b!)} on this computer.
               </p>
-            )
+            ) : (
+              browserAi && (
+                <p className="text-center text-xs text-muted">
+                  Separating two full songs in your browser takes a few minutes.
+                </p>
+              )
+            ))
           )}
           {genError && (
             <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -366,10 +384,12 @@ export function Studio() {
               {processor.label}
             </span>
           </div>
-          {separator && !separator.ok && (
+          {separator && !separator.ok && browserAi !== null && !(browserAi && modelReady) && (
             <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
-              {separator.installed === false ? (
-                "AI separation isn't available on this site yet, so the preview engine approximates the stems."
+              {browserAi ? (
+                `Vocals and instrumentals are separated by AI right in your browser. Your first mashup downloads the model once (${MODEL_MB} MB).`
+              ) : separator.installed === false ? (
+                "This browser can't run the AI separator (it needs WebGPU, as in recent Chrome, Edge or Safari), so the preview engine approximates the stems."
               ) : (
                 <>
                   For clean vocals and a clean instrumental, start the AI separator in a terminal with{" "}
@@ -385,6 +405,7 @@ export function Studio() {
               stage={progress.stage}
               fraction={progress.fraction}
               tempoMatch={tempo !== null || semitones !== 0}
+              modelDownload={modelDownload}
               onCancel={() => abortRef.current?.abort()}
             />
           ) : result ? (

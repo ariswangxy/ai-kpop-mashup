@@ -9,11 +9,13 @@ interface GenerateProgressProps {
   /** Progress within the current stage (0..1), when it's long enough to report. */
   fraction?: number;
   tempoMatch: boolean;
+  /** Whether this run starts by downloading the in-browser AI model. */
+  modelDownload: boolean;
   onCancel: () => void;
 }
 
-export function GenerateProgress({ stage, fraction, tempoMatch, onCancel }: GenerateProgressProps) {
-  const stages = STAGES.filter((s) => s.id !== "tempo" || tempoMatch);
+export function GenerateProgress({ stage, fraction, tempoMatch, modelDownload, onCancel }: GenerateProgressProps) {
+  const stages = STAGES.filter((s) => (s.id !== "tempo" || tempoMatch) && (s.id !== "model" || modelDownload));
   const activeIndex = stages.findIndex((s) => s.id === stage);
   return (
     <div className="flex flex-col gap-4">
