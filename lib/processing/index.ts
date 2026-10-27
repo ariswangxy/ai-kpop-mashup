@@ -13,6 +13,7 @@ export function getProcessor(separatorUp: boolean, browserAi: boolean): MashupPr
 }
 
 export { browserAiSupported, modelCached } from "./browser";
+export { findBeatsInBrowser } from "./browser-beats";
 export { MODEL_MB } from "./htdemucs";
 export { checkSeparator, findBeatsWithAi, type AiBeats, type SeparatorStatus } from "./demucs";
 export * from "./types";

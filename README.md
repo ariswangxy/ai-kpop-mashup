@@ -38,6 +38,15 @@ Without the local separator, browsers with WebGPU run Demucs themselves (`lib/pr
 - Songs are cut into the model's 7.8 s segments with quarter overlaps (`htdemucs.ts`); only the vocals are rebuilt, and the instrumental is the mix minus the vocals.
 - Without WebGPU the studio uses the preview engine: ONNX Runtime's WebAssembly fallback works, but runs several times slower.
 
+### Beats and bar starts in the browser
+
+Each song gets a quick beat estimate as soon as it loads (`lib/audio/beats.ts`), then a trained tracker replaces it a few seconds later: madmom in the local separator when it's running, otherwise [beat_this](https://github.com/CPJKU/beat_this) (MIT) in a Web Worker (`beats-worker.ts`). Start points snap to the tracker's bar starts, and the Beat 1 ‹ › buttons fix the rest by ear.
+
+- The model is beat_this's `small0` checkpoint exported to ONNX, served from `public/models/` (10.5 MB, license alongside). Its log-mel front end, 30 s chunking and peak picking are ported in `beat-this.ts` and match the Python package beat for beat on ten test songs.
+- Checked against madmom on those ten songs, it puts the start of a bar on the real beat 1 86% of the time; the quick estimate manages 41%.
+- About 4 s a song with WebGPU. Without it, it takes ~15 s a song while Generate waits, so those browsers keep the quick estimate.
+- When it counts a fast song at half time, the beats in between are filled in so bar steps and Beat 1 still move by real beats.
+
 ## How processing works
 
 Every mashup runs the steps in `lib/processing/pipeline.ts`. `demucsProcessor` gets stems from the separator; `mockProcessor` approximates them in the browser with Web Audio DSP:

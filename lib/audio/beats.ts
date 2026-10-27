@@ -51,8 +51,16 @@ export function analyzeBeats(channels: Float32Array[], sampleRate: number, bpm: 
 }
 
 /** Beats from a trained tracker (madmom): its downbeats are the bar starts, no guessing needed. */
-export function beatInfoFromTracker(beats: number[], downbeats: number[]): BeatInfo {
-  const times = Float32Array.from(beats);
+/**
+ * BeatInfo from a trained tracker's beats and bar starts. Trackers often count fast songs at half
+ * time; given the song's `bpm`, the beats in between are filled in so that stepping and bar
+ * snapping move by real beats.
+ */
+export function beatInfoFromTracker(beats: number[], downbeats: number[], bpm?: number | null): BeatInfo {
+  const gaps = beats.slice(1).map((b, i) => b - beats[i]).sort((x, y) => x - y);
+  const halfTime = bpm && gaps.length && Math.abs(gaps[gaps.length >> 1] / (60 / bpm) - 2) < 0.15;
+  const all = halfTime ? beats.flatMap((b, i) => (i + 1 < beats.length ? [b, (b + beats[i + 1]) / 2] : [b])) : beats;
+  const times = Float32Array.from(all);
   const isDownbeat = new Set(downbeats.map((d) => Math.round(d * 100)));
   return {
     times,

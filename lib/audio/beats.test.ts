@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeBeats, beatInBar, nearestDownbeat, shiftBarStarts, stepBeats } from "./beats";
+import { analyzeBeats, beatInBar, beatInfoFromTracker, nearestDownbeat, shiftBarStarts, stepBeats } from "./beats";
 
 const SR = 22050;
 const BPM = 120;
@@ -80,5 +80,24 @@ describe("shiftBarStarts", () => {
     const back = shiftBarStarts(shiftBarStarts(info, 3), -3);
     expect(beatInBar(back, times[16])).toBe(1);
     expect(beatInBar(info, times[16])).toBe(1);
+  });
+});
+
+describe("beatInfoFromTracker", () => {
+  // A tracker counting a 150 BPM song at half time: beats every 0.8 s, a bar start every 4 of them.
+  const beats = Array.from({ length: 16 }, (_, i) => i * 0.8);
+  const downbeats = beats.filter((_, i) => i % 4 === 0);
+
+  it("fills in the beats a half-time tracker skipped", () => {
+    const info = beatInfoFromTracker(beats, downbeats, 150);
+    expect(info.times).toHaveLength(31);
+    expect(info.times[1]).toBeCloseTo(0.4);
+    expect(stepBeats(info, 0.8, 1)).toBeCloseTo(1.2);
+    expect(nearestDownbeat(info, 3)).toBeCloseTo(3.2);
+  });
+
+  it("keeps the tracker's beats when they already match the tempo", () => {
+    expect(beatInfoFromTracker(beats, downbeats, 75).times).toHaveLength(16);
+    expect(beatInfoFromTracker(beats, downbeats).times).toHaveLength(16);
   });
 });

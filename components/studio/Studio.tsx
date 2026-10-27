@@ -20,6 +20,7 @@ import {
   activeTempoMatch,
   browserAiSupported,
   checkSeparator,
+  findBeatsInBrowser,
   findBeatsWithAi,
   getProcessor,
   MASHUP_DURATION_SEC,
@@ -152,21 +153,25 @@ export function Studio() {
   }
 
   /**
-   * The in-browser beat estimate shows the song right away; when the AI service is running, its
-   * trained beat tracker replaces it a few seconds later and the start points re-snap to its bars.
+   * The quick beat estimate shows the song right away; a trained beat tracker replaces it a few
+   * seconds later and the start points re-snap to its bars: madmom in the local AI service when
+   * it's running, else beat_this in this browser. Without WebGPU that takes ~15 s a song while
+   * Generate waits, so those browsers keep the quick estimate (and the Beat 1 control).
    */
   async function refineBeatsWithAi(file: File, buffer: AudioBuffer) {
-    if (!(await checkSeparator()).ok) return;
+    // Before anything async, so Generate can't start on the quick estimate in between.
     setFindingBeats((files) => [...files, file]);
     try {
-      const result = await findBeatsWithAi(buffer);
+      const viaService = (await checkSeparator()).ok;
+      if (!viaService && !(await browserAiSupported())) return;
+      const result = viaService ? await findBeatsWithAi(buffer) : await findBeatsInBrowser(buffer);
       if (!result) return;
-      const beats = beatInfoFromTracker(result.beats, result.downbeats);
       setTracks((prev) => {
         // The song may have been swapped to the other side (or removed) meanwhile.
         const side = (["a", "b"] as const).find((s) => prev[s]?.file === file);
         const track = side && prev[side];
         if (!side || !track) return prev;
+        const beats = beatInfoFromTracker(result.beats, result.downbeats, track.bpm);
         const onChorus = track.chorus && Math.abs(track.startSec - track.chorus.startSec) < 0.02;
         const chorus = track.chorus && { ...track.chorus, startSec: nearestDownbeat(beats, track.chorus.startSec) };
         const startSec = onChorus && chorus ? chorus.startSec : nearestDownbeat(beats, track.startSec);

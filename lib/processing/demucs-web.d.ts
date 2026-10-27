@@ -1,5 +1,13 @@
-// demucs-web (MIT) ships plain JS. These are the helpers browser-worker.ts uses.
+// demucs-web (MIT) ships plain JS. These are the helpers browser-worker.ts and beat-this.ts use.
 declare module "demucs-web" {
+  /** Short-time Fourier transform with a periodic Hann window, scaled by 1/sqrt(fftSize); no centring. */
+  export function stft(
+    signal: Float32Array,
+    fftSize: number,
+    hopSize: number,
+  ): { real: Float32Array; imag: Float32Array; numFrames: number; numBins: number };
+  /** Reflection padding, like torch's mode="reflect". */
+  export function reflectPad(signal: Float32Array, padLeft: number, padRight: number): Float32Array;
   interface TrackSpec {
     leftReal: Float32Array;
     leftImag: Float32Array;
