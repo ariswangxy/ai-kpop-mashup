@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Mic2, Music2, Pause, Play, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Mic2, Music2, Pause, Play, Upload, X } from "lucide-react";
 import type { BeatInfo } from "@/lib/audio/beats";
 import type { ChorusResult } from "@/lib/audio/chorus";
 import { ACCEPTED_EXTENSIONS, formatTime } from "@/lib/audio/decode";
@@ -41,6 +41,8 @@ interface UploadSlotProps {
   onJumpToChorus: () => void;
   /** Arrow keys on the waveform: move the start point by bars. */
   onStepBars: (bars: number) => void;
+  /** Move which beat counts as beat 1 of the bar (and the start point with it) by whole beats. */
+  onShiftBeat: (beats: number) => void;
 }
 
 const SIDES = {
@@ -132,21 +134,24 @@ export function UploadSlot(props: UploadSlotProps) {
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="font-mono text-xs text-muted tabular-nums">
               {props.fullSong
                 ? `Lines up at ${formatTime(track.startSec)}`
                 : `Using ${formatTime(track.startSec)}–${formatTime(Math.min(track.startSec + props.regionLengthSec, track.buffer.duration))}`}
               <span className="hidden sm:inline"> · drag to move</span>
             </p>
-            <button
-              type="button"
-              onClick={props.onTogglePreview}
-              className="flex items-center gap-1.5 rounded-full border border-line-strong px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-2"
-            >
-              {previewing ? <Pause size={13} /> : <Play size={13} />}
-              {previewing ? "Stop" : "Preview section"}
-            </button>
+            <div className="flex items-center gap-2">
+              {track.beats && <BeatOneNudge onShift={props.onShiftBeat} />}
+              <button
+                type="button"
+                onClick={props.onTogglePreview}
+                className="flex items-center gap-1.5 rounded-full border border-line-strong px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-2"
+              >
+                {previewing ? <Pause size={13} /> : <Play size={13} />}
+                {previewing ? "Stop" : "Preview section"}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -233,6 +238,28 @@ function ChorusStatus({ track, accent, onJump }: { track: LoadedTrack; accent: s
           Jump to chorus
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Bar detection sometimes picks the wrong beat as beat 1. If the preview doesn't start on "one",
+ * these move beat 1 a beat at a time.
+ */
+function BeatOneNudge({ onShift }: { onShift: (beats: number) => void }) {
+  const button = "p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg";
+  return (
+    <div
+      className="flex items-center rounded-full border border-line-strong text-xs"
+      title="If the preview doesn't start on beat 1 of a bar, shift it a beat at a time."
+    >
+      <button type="button" onClick={() => onShift(-1)} className={`${button} rounded-l-full pl-2`} aria-label="Move beat 1 one beat earlier">
+        <ChevronLeft size={13} />
+      </button>
+      <span className="px-0.5 font-medium">Beat 1</span>
+      <button type="button" onClick={() => onShift(1)} className={`${button} rounded-r-full pr-2`} aria-label="Move beat 1 one beat later">
+        <ChevronRight size={13} />
+      </button>
     </div>
   );
 }

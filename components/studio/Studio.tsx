@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, Sparkles } from "lucide-react";
-import { analyzeBeats, beatInfoFromTracker, nearestDownbeat, stepBeats, type BeatInfo } from "@/lib/audio/beats";
+import {
+  analyzeBeats,
+  beatInfoFromTracker,
+  nearestDownbeat,
+  shiftBarStarts,
+  stepBeats,
+  type BeatInfo,
+} from "@/lib/audio/beats";
 import { detectChorus, type ChorusResult } from "@/lib/audio/chorus";
 import { computePeaks, decodeAudioFile, formatTime } from "@/lib/audio/decode";
 import { playSection, stopPlayback } from "@/lib/audio/player";
@@ -298,6 +305,15 @@ export function Studio() {
         const onChorus = track.chorus && Math.abs(track.startSec - track.chorus.startSec) < 0.02;
         const startSec = onChorus && rhythm.chorus ? rhythm.chorus.startSec : snapToBar(rhythm.beats, track.startSec);
         return { ...prev, [side]: { ...track, bpm, ...rhythm, startSec } };
+      }),
+    // Beat 1 was detected on the wrong beat: move the whole bar grid, and the section and chorus with it.
+    onShiftBeat: (beats: number) =>
+      setTracks((prev) => {
+        const track = prev[side];
+        if (!track?.beats) return prev;
+        const startSec = stepBeats(track.beats, track.startSec, beats);
+        const chorus = track.chorus && { ...track.chorus, startSec: stepBeats(track.beats, track.chorus.startSec, beats) };
+        return { ...prev, [side]: { ...track, beats: shiftBarStarts(track.beats, beats), startSec, chorus } };
       }),
     onKeyChange: (key: MusicalKey | null) => updateTrack(side, { key }),
     onJumpToChorus: () => tracks[side]?.chorus && updateTrack(side, { startSec: tracks[side]!.chorus!.startSec }),

@@ -133,6 +133,14 @@ export function stepBeats(info: BeatInfo, sec: number, steps: number): number {
   return info.times[i];
 }
 
+/**
+ * The same beats with beat 1 of every bar moved `beats` later (negative: earlier), for when the
+ * bar detection picked the wrong beat. Snapping to bars follows the new grid everywhere.
+ */
+export function shiftBarStarts(info: BeatInfo, beats: number): BeatInfo {
+  return { ...info, barStart: info.barStart.map((_, i) => info.barStart[i - beats] ?? 0) };
+}
+
 function peakNear({ env, fps }: OnsetEnvelope, sec: number, radiusSec: number) {
   let max = 0;
   const from = Math.max(0, Math.floor((sec - radiusSec) * fps));

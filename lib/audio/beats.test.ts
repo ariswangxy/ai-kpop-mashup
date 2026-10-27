@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeBeats, beatInBar, nearestDownbeat, stepBeats } from "./beats";
+import { analyzeBeats, beatInBar, nearestDownbeat, shiftBarStarts, stepBeats } from "./beats";
 
 const SR = 22050;
 const BPM = 120;
@@ -60,5 +60,25 @@ describe("analyzeBeats", () => {
   it("steps by beats", () => {
     expect(Math.abs(stepBeats(info, downbeat(3), 1) - (downbeat(3) + BEAT))).toBeLessThan(0.02);
     expect(Math.abs(stepBeats(info, downbeat(3), -4) - downbeat(2))).toBeLessThan(0.02);
+  });
+});
+
+describe("shiftBarStarts", () => {
+  // 32 beats at 120 BPM with beat 1 of each bar on beats 0, 4, 8, …
+  const times = Float32Array.from({ length: 32 }, (_, i) => i * BEAT);
+  const info = { times, barStart: times.map((_, i) => (i % 4 === 0 ? 1 : 0)), strength: times.map(() => 1) };
+
+  it("moves beat 1 later or earlier by whole beats", () => {
+    const later = shiftBarStarts(info, 1);
+    expect(beatInBar(later, times[9])).toBe(1);
+    expect(nearestDownbeat(later, times[8])).toBeCloseTo(times[9]);
+    const earlier = shiftBarStarts(info, -1);
+    expect(beatInBar(earlier, times[7])).toBe(1);
+  });
+
+  it("is undone by the opposite shift and leaves the input alone", () => {
+    const back = shiftBarStarts(shiftBarStarts(info, 3), -3);
+    expect(beatInBar(back, times[16])).toBe(1);
+    expect(beatInBar(info, times[16])).toBe(1);
   });
 });
