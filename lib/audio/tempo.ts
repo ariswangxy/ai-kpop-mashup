@@ -61,8 +61,9 @@ export function estimateBpm({ env, fps }: OnsetEnvelope): number | null {
   const maxLag = Math.ceil((60 * fps) / MIN_BPM);
   if (n < maxLag * 4) return null;
 
+  // From lag 0: r[0] (the variance) and the short lags of half beats are needed below.
   const r = new Float32Array(maxLag * 4 + 2);
-  for (let lag = minLag; lag < r.length; lag++) {
+  for (let lag = 0; lag < r.length; lag++) {
     let s = 0;
     for (let i = 0; i + lag < n; i++) s += x[i] * x[i + lag];
     r[lag] = s / (n - lag);
@@ -79,6 +80,18 @@ export function estimateBpm({ env, fps }: OnsetEnvelope): number | null {
   let best = minLag;
   for (let lag = minLag; lag <= maxLag; lag++) if (score(lag) > score(best)) best = lag;
   if (score(best) <= 0) return null;
+
+  // Syncopated kicks (3-3-2 patterns, as in Jersey club or dembow) also repeat every 1.5 beats,
+  // which can outscore the real beat and report 2/3 of the tempo. The real beat has a pulse at
+  // its half beat (eighth notes); the impostor's half beat falls between eighths. So when only the
+  // tempo 1.5x faster has that pulse, it's the real one.
+  const pulse = (lag: number) => {
+    const half = lag / 2;
+    const i = Math.floor(half);
+    return (r[i] * (1 - (half - i)) + r[i + 1] * (half - i)) / r[0];
+  };
+  const faster = (best * 2) / 3;
+  if (faster >= minLag && pulse(faster) > 0.03 && pulse(faster) > pulse(best) + 0.05) best = Math.round(faster);
 
   // Parabolic interpolation for sub-frame precision.
   const [a, b, c] = [score(best - 1), score(best), score(best + 1)];
@@ -138,7 +151,11 @@ export function refineBpm({ env, fps }: OnsetEnvelope, bpm: number): number {
       if (grid[w].strength < minStrength || grid[w + spacing].strength < minStrength) continue;
       const elapsed = grid[w + spacing].at - grid[w].at;
       // How far the later grid sits from where the current tempo says a beat should be.
-      drifts.push((elapsed - Math.round(elapsed / period) * period) / elapsed);
+      const off = elapsed - Math.round(elapsed / period) * period;
+      // Real drift over the span stays under a quarter beat (see below). A bigger jump is the grid
+      // snapping to the off-beat in a window where syncopated hits are louder, not a tempo error.
+      if (Math.abs(off) > period / 4) continue;
+      drifts.push(off / elapsed);
     }
     if (drifts.length < 3) return null;
     drifts.sort((x, y) => x - y);

@@ -34,6 +34,24 @@ describe("estimateBpm", () => {
     expect(Math.min(Math.abs(est - 172), Math.abs(est * 2 - 172))).toBeLessThan(1.5);
   });
 
+  it("isn't fooled by a syncopated 3-3-2 kick into reporting 2/3 of the tempo", () => {
+    // Jersey club / dembow style at 150 BPM: kicks on eighths 1, 4 and 7 of each bar, so they
+    // repeat every 1.5 beats (= 100 BPM), plus quieter hi-hats on every eighth.
+    const bpm = 150;
+    const eighth = (60 / bpm / 2) * SR;
+    const data = new Float32Array(30 * SR);
+    let seed = 1;
+    const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    for (let e = 0; e * eighth < data.length; e++) {
+      const kick = [0, 3, 6].includes(e % 8);
+      const [gain, decay] = kick ? [1, 400] : [0.3, 60];
+      const t = Math.round(e * eighth);
+      for (let i = 0; i < 1200 && t + i < data.length; i++) data[t + i] += gain * noise() * Math.exp(-i / decay);
+    }
+    const est = estimateBpm(onsetEnvelope([data], SR))!;
+    expect(Math.min(Math.abs(est - bpm), Math.abs(est * 2 - bpm))).toBeLessThan(1.5);
+  });
+
   it("returns null for silence", () => {
     expect(estimateBpm(onsetEnvelope([new Float32Array(30 * SR)], SR))).toBeNull();
   });
