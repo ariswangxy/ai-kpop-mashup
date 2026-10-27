@@ -1,26 +1,133 @@
 @import "tailwindcss";
 
+/* Stage-light palette: Song A (vocals) is hot pink, Song B (instrumental) is cyan; a mashup blends both. Dark first. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0a14;
+  --surface: #14121f;
+  --surface-2: #1d1a2c;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.16);
+  --fg: #f3f0ff;
+  --muted: #9b95b5;
+  --a: #ff3d8b;
+  --b: #2ee6d6;
+  --a-soft: rgb(255 61 139 / 0.14);
+  --b-soft: rgb(46 230 214 / 0.12);
+  --danger: #ff6b6b;
+  --on-accent: #0b0a14;
+  color-scheme: dark;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #f6f4fb;
+    --surface: #ffffff;
+    --surface-2: #efecf7;
+    --line: rgb(23 19 43 / 0.09);
+    --line-strong: rgb(23 19 43 / 0.18);
+    --fg: #17132b;
+    --muted: #625b7f;
+    --a: #e0186c;
+    --b: #0a9d92;
+    --a-soft: rgb(224 24 108 / 0.1);
+    --b-soft: rgb(10 157 146 / 0.1);
+    --danger: #d43c3c;
+    --on-accent: #ffffff;
+    color-scheme: light;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-a: var(--a);
+  --color-b: var(--b);
+  --color-a-soft: var(--a-soft);
+  --color-b-soft: var(--b-soft);
+  --color-danger: var(--danger);
+  --color-on-accent: var(--on-accent);
+  --font-display: var(--font-unbounded), "Arial Black", sans-serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, Menlo, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+/* Soft stage-light wash behind the page. */
+.stage-glow {
+  background:
+    radial-gradient(60% 50% at 15% 0%, var(--a-soft), transparent 70%),
+    radial-gradient(55% 45% at 90% 10%, var(--b-soft), transparent 70%);
+}
+
+.text-mashup {
+  background: linear-gradient(90deg, var(--a), var(--b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-mashup {
+  background: linear-gradient(90deg, var(--a), var(--b));
+}
+
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* Range inputs tinted by a --accent custom property set on the element. */
+input[type="range"].level {
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--fill, 50%),
+    var(--line-strong) var(--fill, 50%)
+  );
+  cursor: pointer;
+}
+input[type="range"].level::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--fg);
+  border: 3px solid var(--accent);
+}
+input[type="range"].level::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fg);
+  border: 3px solid var(--accent);
+}
+
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq-bar { animation: none; }
+  * { scroll-behavior: auto !important; transition: none !important; }
 }

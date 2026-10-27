@@ -3,25 +3,32 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start -p 3001",
+    "lint": "eslint",
+    "test": "vitest run",
+    "separator": "separator/.venv/bin/python separator/server.py",
+    "separator:setup": "python3.11 -m venv separator/.venv && separator/.venv/bin/pip install Cython==3.3.0 numpy==1.26.4 && separator/.venv/bin/pip install --no-build-isolation -r separator/requirements.txt"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "idb-keyval": "^6.2.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.27",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.5.4"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
-    "eslint-config-next": "15.5.4",
-    "@eslint/eslintrc": "^3"
+    "eslint-config-next": "^15.5.27",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^2.1.8"
   }
 }

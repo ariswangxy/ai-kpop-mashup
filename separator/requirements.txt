@@ -1,0 +1,8 @@
+torch==2.5.1
+torchaudio==2.5.1
+demucs==4.0.1
+numpy==1.26.4
+soxr==1.1.0
+# madmom's last PyPI release doesn't support Python 3.10+; install from source (needs Cython first).
+Cython==3.3.0
+madmom @ git+https://github.com/CPJKU/madmom.git@27f032e8947204902c675e5e341a3faf5dc86dae

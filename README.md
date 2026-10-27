@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mashup Studio
 
-## Getting Started
+Upload two songs, take the vocals from Song A and the instrumental from Song B, and get a 30-second mashup.
 
-First, run the development server:
+Built with Next.js (App Router), TypeScript, Tailwind CSS v4 and Supabase (optional).
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3001
+npm test         # unit tests for the audio code
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## AI separation (clean vocals and instrumental)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Stems come from [Demucs](https://github.com/facebookresearch/demucs) (`htdemucs_ft`, MIT), running locally in `separator/server.py`. Only the 30-second sections are sent to it.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run separator:setup   # once: Python 3.11 venv + PyTorch + Demucs + madmom (~2 GB)
+npm run separator         # keep running next to `npm run dev`; first start downloads the model
+```
 
-## Learn More
+- Only the vocals specialist of `htdemucs_ft` runs; the instrumental is the mix minus the vocals. About 15 s per stem on an M2 CPU.
+- Apple GPUs (MPS) can't run Demucs (a convolution exceeds an MPS limit in PyTorch 2.5–2.8), so Macs use the CPU. `SEPARATOR_DEVICE=cuda` works on NVIDIA machines.
+- The Next.js route `app/api/separate/route.ts` proxies to it (`SEPARATOR_URL`, default `http://127.0.0.1:8765`).
+- If the separator isn't running, the studio says so and falls back to the in-browser preview engine below.
+- **Full-song mashups** send both whole songs in 60 s chunks (crossfaded over 4 s overlaps) with live progress and a Cancel button. Expect about a minute of processing per minute of music on an M2.
 
-To learn more about Next.js, take a look at the following resources:
+## How processing works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Every mashup runs the steps in `lib/processing/pipeline.ts`. `demucsProcessor` gets stems from the separator; `mockProcessor` approximates them in the browser with Web Audio DSP:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Vocals (Song A):** the center (mid) channel, band-limited to the voice range.
+- **Instrumental (Song B):** the side channel (L−R cancels center-panned vocals) plus low bass from the mid channel.
+- **Length:** a 30-second clip of the picked sections, or the full song: all of Song A's vocals over all of Song B's instrumental (output is Song B's length), placed so the picked sections land together, on the beat.
+- **Chorus detection:** on upload, each song's 30 s window is placed on its chorus (`lib/audio/chorus.ts`): the section that repeats most across the song and is loud, with the start moved to the section boundary and onto a beat. "Jump to chorus" puts it back after you drag it.
+- **Beat-1 alignment (always on):** on upload, a quick in-browser estimate (`lib/audio/beats.ts`: kick hits and chord changes mark beat 1) shows the song right away; when the AI service runs, madmom's trained downbeat tracker (`POST /beats`, ~20 s per song) replaces the bar positions and Generate waits for it. Tempo for stretching stays the app's own drift-checked BPM, since madmom's beats wobble by tens of ms. Start points always sit on beat 1 of a bar, including after dragging, and the vocals' beat 1 lands exactly on the instrumental's beat 1.
+- **Tempo match (on by default):** each song's BPM is detected on upload (`lib/audio/tempo.ts`) and can be edited. The vocals are time-stretched to Song B's tempo with pitch kept (WSOLA, `lib/audio/stretch.ts`), then shifted so their beats land on Song B's. Half and double time count as a match. Pairs more than 25% apart skip tempo match.
+- **Key shift (Auto by default):** each song's key is detected on upload (`lib/audio/key.ts`, Krumhansl–Schmuckler) and can be corrected. Auto picks the smallest shift (at most 6 semitones) that puts Song A's vocals in Song B's key; relative major/minor counts as the same key, since they share every note. The −/+ buttons set a manual shift of up to ±6. Pitch is shifted by resampling plus time-stretch, so timing is unchanged (`stretchAndShift` in `lib/audio/stretch.ts`).
+- Mixed through a limiter with 1.5 s fades, then encoded as WAV.
 
-## Deploy on Vercel
+The preview engine leaves audible bleed; use the AI separator for clean stems.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Supabase (optional)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Without Supabase env vars, saved mashups are kept in IndexedDB in the browser. To store them in Supabase:
+
+1. Copy `.env.example` to `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+2. Apply the files in `supabase/migrations/` in order (`supabase db push`, or paste it into the SQL editor). It creates the `mashups` table and the private `tracks` and `mashups` storage buckets.
+
+Ownership uses an anonymous per-browser id sent as an `x-owner-id` header. That is fine for development, but anyone can send any header, so add Supabase Auth and switch the policies to `auth.uid()` before making this public.
